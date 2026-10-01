@@ -2,9 +2,14 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-export default function ProductViewer({ selectedPartId, onSelectPart }) {
+export default function ProductViewer({
+  selectedPartId,
+  onSelectPart,
+  cameraView,
+}) {
   const containerRef = useRef(null);
   const assemblyRef = useRef(null);
+  const requestViewRef = useRef(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -213,6 +218,33 @@ export default function ProductViewer({ selectedPartId, onSelectPart }) {
     resize();
 
     renderer.setAnimationLoop(() => {
+      if (cameraTransition) {
+        const {
+          fromPosition,
+          fromTarget,
+          toPosition,
+          toTarget,
+          startedAt,
+          duration,
+        } = cameraTransition;
+
+        const progress =
+          duration === 0
+            ? 1
+            : Math.min((performance.now() - startedAt) / duration, 1);
+
+        // Smoothstep: start gently, speed up, then ease to a stop.
+        const eased = progress * progress * (3 - 2 * progress);
+
+        camera.position.lerpVectors(fromPosition, toPosition, eased);
+        controls.target.lerpVectors(fromTarget, toTarget, eased);
+
+        if (progress === 1) {
+          cameraTransition = null;
+          controls.enableDamping = true;
+        }
+      }
+
       controls.update();
       renderer.render(scene, camera);
     });
@@ -229,6 +261,9 @@ export default function ProductViewer({ selectedPartId, onSelectPart }) {
       canvas.removeEventListener("lostpointercapture", handlePointerCancel);
 
       assemblyRef.current = null;
+      controls.removeEventListener("start", cancelCameraTransition);
+      requestViewRef.current = null;
+      cameraTransition = null;
       controls.dispose();
 
       assembly.traverse((object) => {
@@ -259,6 +294,10 @@ export default function ProductViewer({ selectedPartId, onSelectPart }) {
       object.material.emissiveIntensity = isSelected ? 0.45 : 0;
     });
   }, [selectedPartId, onSelectPart]);
-
+  useEffect(() => {
+    if (cameraView) {
+      requestViewRef.current?.(cameraView);
+    }
+  }, [cameraView, onSelectPart]);
   return <div ref={containerRef} className="product-viewer" />;
 }

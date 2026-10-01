@@ -24,11 +24,42 @@ function App() {
         <p>Explore a simplified filter assembly in 3D.</p>
       </header>
 
+      <nav className="view-controls" aria-label="Guided product views">
+        <button
+          type="button"
+          onClick={() => showView("housing", [3.5, 2, 4.5], [0, 0, 0])}
+        >
+          1. Housing
+        </button>
+
+        <button
+          type="button"
+          onClick={() => showView("cartridge", [2.4, 0.8, 3.2], [0, 0, 0])}
+        >
+          2. Cartridge
+        </button>
+
+        <button
+          type="button"
+          onClick={() => showView("outlet", [4, 0.6, 2.4], [0.8, -0.4, 0])}
+        >
+          3. Outlet
+        </button>
+
+        <button
+          type="button"
+          onClick={() => showView(null, [4, 3, 5], [0, 0.2, 0])}
+        >
+          Reset view
+        </button>
+      </nav>
+
       <div className="explorer-layout">
         <section className="viewer-panel" aria-label="Product explorer">
           <ProductViewer
             selectedPartId={selectedPartId}
             onSelectPart={setSelectedPartId}
+            cameraView={cameraView}
           />
 
           <p className="viewer-help">

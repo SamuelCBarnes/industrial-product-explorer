@@ -1,14 +1,20 @@
-import { useState } from 'react'
-import ProductViewer from './components/ProductViewer'
-import { productParts } from './data/productParts'
-import './App.css'
+import { useState } from "react";
+import ProductViewer from "./components/ProductViewer";
+import { productParts } from "./data/productParts";
+import "./App.css";
 
 function App() {
-  const [selectedPartId, setSelectedPartId] = useState(null)
+  const [selectedPartId, setSelectedPartId] = useState(null);
 
-  const selectedPart = productParts.find(
-    (part) => part.id === selectedPartId,
-  )
+  // guided camera views and a Reset View button
+  const [cameraView, setCameraView] = useState(null);
+
+  function showView(partId, position, target) {
+    setSelectedPartId(partId);
+    setCameraView({ position, target });
+  }
+
+  const selectedPart = productParts.find((part) => part.id === selectedPartId);
 
   return (
     <main className="explorer">
@@ -49,11 +55,13 @@ function App() {
           </div>
 
           <div className="part-description" aria-live="polite">
-            <h3>{selectedPart ? selectedPart.label : 'Explore the assembly'}</h3>
+            <h3>
+              {selectedPart ? selectedPart.label : "Explore the assembly"}
+            </h3>
             <p>
               {selectedPart
                 ? selectedPart.description
-                : 'Choose a component to learn about its purpose.'}
+                : "Choose a component to learn about its purpose."}
             </p>
           </div>
 
@@ -68,7 +76,7 @@ function App() {
         </aside>
       </div>
     </main>
-  )
+  );
 }
 
-export default App
+export default App;

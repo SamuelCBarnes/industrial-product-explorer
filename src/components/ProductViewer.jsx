@@ -11,28 +11,29 @@ export default function ProductViewer({
   const assemblyRef = useRef(null);
   const requestViewRef = useRef(null);
 
+  // Create the scene, interactions, and animation loop.
   useEffect(() => {
     const container = containerRef.current;
 
-    // The scene holds our lights and 3D objects.
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#152033");
 
-    // Perspective cameras make distant objects appear smaller.
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
     camera.position.set(4, 3, 5);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.domElement.setAttribute("role", "img");
-    renderer.domElement.setAttribute(
+
+    const canvas = renderer.domElement;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute(
       "aria-label",
       "3D cutaway filter assembly with housing, cartridge, top cap, and outlet",
     );
-    container.appendChild(renderer.domElement);
+    container.appendChild(canvas);
 
-    // Drag to orbit; scroll or pinch to zoom.
-    const controls = new OrbitControls(camera, renderer.domElement);
+    // Orbit controls.
+    const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.enablePan = false;
     controls.minDistance = 3;
@@ -40,15 +41,48 @@ export default function ProductViewer({
     controls.target.set(0, 0.2, 0);
     controls.update();
 
-    // Soft overall lighting plus a brighter directional light.
-    const ambientLight = new THREE.HemisphereLight("#ffffff", "#475569", 2);
+    // Guided camera transitions.
+    let cameraTransition = null;
+
+    requestViewRef.current = (view) => {
+      // Clear remaining orbit inertia before starting a transition.
+      controls.enableDamping = false;
+      controls.update();
+
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      cameraTransition = {
+        fromPosition: camera.position.clone(),
+        fromTarget: controls.target.clone(),
+        toPosition: new THREE.Vector3(...view.position),
+        toTarget: new THREE.Vector3(...view.target),
+        startedAt: performance.now(),
+        duration: prefersReducedMotion ? 0 : 900,
+      };
+    };
+
+    function cancelCameraTransition() {
+      cameraTransition = null;
+      controls.enableDamping = true;
+    }
+
+    controls.addEventListener("start", cancelCameraTransition);
+
+    // Lighting.
+    const ambientLight = new THREE.HemisphereLight(
+      "#ffffff",
+      "#475569",
+      2,
+    );
     scene.add(ambientLight);
 
     const keyLight = new THREE.DirectionalLight("#ffffff", 3);
     keyLight.position.set(3, 5, 4);
     scene.add(keyLight);
 
-    // Grouping lets us move the whole product together later.
+    // Product assembly.
     const assembly = new THREE.Group();
     assembly.name = "filter-assembly";
     scene.add(assembly);
@@ -79,7 +113,7 @@ export default function ProductViewer({
       roughness: 0.35,
     });
 
-    // Partial cylinder: a 90-degree opening reveals the cartridge.
+    // Partial cylinder with a 90-degree cutaway.
     const housing = new THREE.Mesh(
       new THREE.CylinderGeometry(
         0.85,
@@ -119,14 +153,14 @@ export default function ProductViewer({
     outlet.rotation.z = Math.PI / 2;
     outlet.position.set(1.15, -0.55, 0);
     assembly.add(outlet);
+
+    // Component selection.
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const canvas = renderer.domElement;
 
     let pointerStart = null;
 
     function handlePointerDown(event) {
-      // Ignore secondary buttons and cancel selection during multitouch.
       if (!event.isPrimary || event.button !== 0) {
         pointerStart = null;
         return;
@@ -148,7 +182,6 @@ export default function ProductViewer({
         event.clientY - pointerStart.y,
       );
 
-      // Once a gesture becomes a drag, it stays a drag.
       if (distance > 5) {
         pointerStart.dragged = true;
       }
@@ -169,6 +202,8 @@ export default function ProductViewer({
 
       const bounds = canvas.getBoundingClientRect();
 
+      if (!bounds.width || !bounds.height) return;
+
       if (
         event.clientX < bounds.left ||
         event.clientX > bounds.right ||
@@ -178,7 +213,7 @@ export default function ProductViewer({
         return;
       }
 
-      // Convert browser coordinates to Three.js coordinates: -1 to +1.
+      // Convert screen coordinates to normalized device coordinates.
       pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
       pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
 
@@ -201,7 +236,7 @@ export default function ProductViewer({
     canvas.addEventListener("pointercancel", handlePointerCancel);
     canvas.addEventListener("lostpointercapture", handlePointerCancel);
 
-    // Match the canvas to its container, including layout changes.
+    // Responsive canvas sizing.
     function resize() {
       const width = container.clientWidth;
       const height = container.clientHeight;
@@ -217,6 +252,7 @@ export default function ProductViewer({
     resizeObserver.observe(container);
     resize();
 
+    // Animate the camera and render the scene.
     renderer.setAnimationLoop(() => {
       if (cameraTransition) {
         const {
@@ -233,7 +269,6 @@ export default function ProductViewer({
             ? 1
             : Math.min((performance.now() - startedAt) / duration, 1);
 
-        // Smoothstep: start gently, speed up, then ease to a stop.
         const eased = progress * progress * (3 - 2 * progress);
 
         camera.position.lerpVectors(fromPosition, toPosition, eased);
@@ -249,22 +284,23 @@ export default function ProductViewer({
       renderer.render(scene, camera);
     });
 
-    // React may mount, clean up, and mount again in development.
-    // Release everything this effect created.
+    // Release everything created by this effect.
     return () => {
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
+
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerup", handlePointerUp);
       canvas.removeEventListener("pointercancel", handlePointerCancel);
       canvas.removeEventListener("lostpointercapture", handlePointerCancel);
 
-      assemblyRef.current = null;
       controls.removeEventListener("start", cancelCameraTransition);
-      requestViewRef.current = null;
-      cameraTransition = null;
       controls.dispose();
+
+      requestViewRef.current = null;
+      assemblyRef.current = null;
+      cameraTransition = null;
 
       assembly.traverse((object) => {
         if (object.isMesh) {
@@ -276,11 +312,13 @@ export default function ProductViewer({
       cartridgeMaterial.dispose();
       capMaterial.dispose();
       outletMaterial.dispose();
+
       renderer.dispose();
-      renderer.domElement.remove();
+      canvas.remove();
     };
   }, [onSelectPart]);
 
+  // Synchronize material highlighting with React selection state.
   useEffect(() => {
     const assembly = assemblyRef.current;
     if (!assembly) return;
@@ -290,14 +328,19 @@ export default function ProductViewer({
 
       const isSelected = object.name === selectedPartId;
 
-      object.material.emissive.set(isSelected ? "#38bdf8" : "#000000");
+      object.material.emissive.set(
+        isSelected ? "#38bdf8" : "#000000",
+      );
       object.material.emissiveIntensity = isSelected ? 0.45 : 0;
     });
   }, [selectedPartId, onSelectPart]);
+
+  // Forward React camera requests to the existing Three.js scene.
   useEffect(() => {
     if (cameraView) {
       requestViewRef.current?.(cameraView);
     }
   }, [cameraView, onSelectPart]);
+
   return <div ref={containerRef} className="product-viewer" />;
 }
